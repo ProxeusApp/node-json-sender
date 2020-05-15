@@ -20,7 +20,7 @@ The following parameters can be set via environment variables.
 
 | Environmentvariable | Required | Default value
 --- | --- |   --- |  
-PROXEUS_INFURA_API_KEY | X |  
+PROXEUS_INSTANCE_URL |  | http://127.0.0.1:1323
 SERVICE_URL |  | http://localhost:SERVICE_PORT
 SERVICE_PORT |  | 8015
 SERVICE_SECRET |  | my secret
