@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/ProxeusApp/proxeus-core/externalnode"
 
@@ -108,7 +109,8 @@ func next(c echo.Context) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	addConfigHeaders(req)
+
+	addConfigHeaders(req, extractHeaders(os.Environ()))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		b2, _ := ioutil.ReadAll(io.LimitReader(resp.Body, 100*1024))
@@ -118,11 +120,27 @@ func next(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-func addConfigHeaders(req *http.Request) {
-	req.Header.Set("clientid", os.Getenv("JSON_SENDER_CLIENT_ID"))
-	req.Header.Set("tenantid", os.Getenv("JSON_SENDER_TENANT_ID"))
-	req.Header.Set("secret", os.Getenv("JSON_SENDER_SECRET"))
-	req.Header.Set("oauthserverurl", os.Getenv("JSON_SENDER_OAUTH_URL"))
+var envRegexp = regexp.MustCompile("JSON_SENDER_HEADER_(.+)=(.+)")
+
+func extractHeaders(env []string) [][]string {
+	var headers [][]string
+
+	for _, env := range env {
+		match := envRegexp.FindAllStringSubmatch(env, -1)
+		if len(match) != 1 {
+			continue
+		}
+
+		headers = append(headers, match[0][1:])
+	}
+
+	return headers
+}
+
+func addConfigHeaders(req *http.Request, headers [][]string) {
+	for _, header := range headers {
+		req.Header.Set(header[0], header[1])
+	}
 }
 
 //data changes requested by customer

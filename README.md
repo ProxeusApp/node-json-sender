@@ -26,10 +26,16 @@ SERVICE_PORT |  | 8015
 SERVICE_SECRET |  | my secret
 REGISTER_RETRY_INTERVAL |  | 5
 JSON_SENDER_URL | X |
-JSON_SENDER_CLIENT_ID | X |
-JSON_SENDER_TENANT_ID | X |
-JSON_SENDER_SECRET | X |
-JSON_SENDER_OAUTH_URL | X |
+JSON_SENDER_HEADER_<header name> |  |
+
+### Headers
+
+Header values can be passed using the environment variables with the following format:
+
+JSON_SENDER_HEADER_<example>=value
+
+This will add the header `example` with the given value to the HTTP POST.
+
 
 ## Deployment
 
@@ -52,10 +58,10 @@ services:
     environment:
       PROXEUS_INSTANCE_URL: http://xes-platform:1323
       JSON_SENDER_URL: http://url:123/endpoint
-      JSON_SENDER_CLIENT_ID: client_id
-      JSON_SENDER_TENANT_ID: tenant_id
-      JSON_SENDER_SECRET: secret
-      JSON_SENDER_OAUTH_URL: oath_url
+      JSON_SENDER_HEADER_clientid: client_id
+      JSON_SENDER_HEADER_tenantid: tenant_id
+      JSON_SENDER_HEADER_secret: secret
+      JSON_SENDER_HEADER_oauthserverurl: oath_url
       SERVICE_SECRET: secret
       SERVICE_PORT: 8015
       SERVICE_URL: http://node-json-sender:8015
