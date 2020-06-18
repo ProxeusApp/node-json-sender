@@ -11,7 +11,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/ProxeusApp/proxeus-core/externalnode"
+	externalnode "github.com/ProxeusApp/node-go"
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -23,12 +23,23 @@ const (
 	defaultJWTSecret   = "my secret 4"
 	defaultProxeusUrl  = "http://127.0.0.1:1323"
 	defaultAuthkey     = "auth"
+	serviceDetail      = "Sends form data to a REST endpoint via POST request"
 )
 
+type handler struct {
+	proxeusURL  string
+	serviceName string
+	servicePort string
+	serviceUrl  string
+	jwtSecret   string
+	targetURL   string
+	headers     [][]string
+}
+
 func main() {
-	proxeusUrl := os.Getenv("PROXEUS_INSTANCE_URL")
-	if len(proxeusUrl) == 0 {
-		proxeusUrl = defaultProxeusUrl
+	proxeusURL := os.Getenv("PROXEUS_INSTANCE_URL")
+	if len(proxeusURL) == 0 {
+		proxeusURL = defaultProxeusUrl
 	}
 	servicePort := os.Getenv("SERVICE_PORT")
 	if len(servicePort) == 0 {
@@ -38,26 +49,37 @@ func main() {
 	if len(serviceUrl) == 0 {
 		serviceUrl = "localhost:" + servicePort
 	}
-	jwtsecret := os.Getenv("SERVICE_SECRET")
-	if len(jwtsecret) == 0 {
-		jwtsecret = defaultJWTSecret
+	jwtSecret := os.Getenv("SERVICE_SECRET")
+	if len(jwtSecret) == 0 {
+		jwtSecret = defaultJWTSecret
 	}
 	serviceName := os.Getenv("SERVICE_NAME")
 	if len(serviceName) == 0 {
 		serviceName = defaultServiceName
 	}
+
+	targetURL := os.Getenv("JSON_SENDER_URL")
+	if len(targetURL) == 0 {
+		panic("JSON_SENDER_URL not defined")
+	}
+
+	h := &handler{
+		proxeusURL:  proxeusURL,
+		serviceName: serviceName,
+		servicePort: servicePort,
+		serviceUrl:  serviceUrl,
+		jwtSecret:   jwtSecret,
+		targetURL:   targetURL,
+		headers:     extractHeaders(os.Environ()),
+	}
+
 	fmt.Println()
 	fmt.Println("#######################################################")
 	fmt.Println("# STARTING NODE - " + serviceName)
 	fmt.Println("# listening on " + serviceUrl)
-	fmt.Println("# connecting to " + proxeusUrl)
+	fmt.Println("# connecting to " + proxeusURL)
 	fmt.Println("#######################################################")
 	fmt.Println()
-
-	mkrAddress := os.Getenv("PROXEUS_MKR_ADDRESS")
-	if mkrAddress == "" {
-		//panic("Environment variable xyz is required.")
-	}
 
 	e := echo.New()
 	e.HideBanner = true
@@ -66,24 +88,32 @@ func main() {
 	{
 		g := e.Group("/node/:id")
 		conf := middleware.DefaultJWTConfig
-		conf.SigningKey = []byte(jwtsecret)
+		conf.SigningKey = []byte(jwtSecret)
 		conf.TokenLookup = "query:" + defaultAuthkey
 		g.Use(middleware.JWTWithConfig(conf))
 
-		g.POST("/next", next)
+		g.POST("/next", h.next)
 		g.GET("/config", externalnode.Nop)
 		g.POST("/config", externalnode.Nop)
 		g.POST("/remove", externalnode.Nop)
 		g.POST("/close", externalnode.Nop)
 	}
-	externalnode.Register(proxeusUrl, serviceName, serviceUrl, jwtsecret, "Sends form data to a REST endpoint via POST request")
-	err := e.Start("0.0.0.0:" + servicePort)
+	err := h.register()
+	if err != nil {
+		panic("Could not register")
+	}
+
+	err = e.Start("0.0.0.0:" + servicePort)
 	if err != nil {
 		log.Println("[jsondatasender][run] Start err: ", err.Error())
 	}
 }
 
-func next(c echo.Context) error {
+func (h *handler) register() error {
+	return externalnode.Register(h.proxeusURL, h.serviceName, h.serviceUrl, h.jwtSecret, serviceDetail, 5)
+}
+
+func (h *handler) next(c echo.Context) error {
 	body, err := ioutil.ReadAll(c.Request().Body)
 
 	if err != nil {
@@ -103,21 +133,22 @@ func next(c echo.Context) error {
 		log.Printf("[jsondatasender][next] Error '%s'\n", err)
 		return err
 	}
-	req, err := http.NewRequest("POST", os.Getenv("JSON_SENDER_URL"), bytes.NewReader(b))
+	req, err := http.NewRequest("POST", h.targetURL, bytes.NewReader(b))
 	if err != nil {
 		log.Printf("[jsondatasender][next] Error '%s'\n", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	addConfigHeaders(req, extractHeaders(os.Environ()))
+	addConfigHeaders(req, h.headers)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		b2, _ := ioutil.ReadAll(io.LimitReader(resp.Body, 100*1024))
 		log.Printf("[jsondatasender][next] SERVER NOT ACCEPTED '%s', RESPONSE '%s'\n", b, b2)
 		return err
 	}
-	return c.NoContent(http.StatusOK)
+
+	return c.Stream(resp.StatusCode, resp.Header.Get("Content-Type"), resp.Body)
 }
 
 var envRegexp = regexp.MustCompile("JSON_SENDER_HEADER_(.+)=(.+)")
@@ -158,4 +189,12 @@ func changeDataBeforeSend(dat interface{}) interface{} {
 		}
 	}
 	return dat
+}
+
+func env(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value != "" {
+		return value
+	}
+	return defaultValue
 }
