@@ -3,7 +3,7 @@
 BIN_NAME=node
 IMAGE_NAME=proxeus/node-json-sender
 
-default: fmt test build package tag run
+default: fmt test build package tag
 
 fmt:
 	goimports -w .
